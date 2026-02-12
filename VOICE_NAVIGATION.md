@@ -7,6 +7,7 @@ Navigo now includes an intelligent voice navigation system that allows users to 
 - **Voice Commands**: Control the app using your voice
 - **Multi-Language Support**: Supports 17 languages including English, Hindi, Tamil, Telugu, and more
 - **Text-to-Speech Feedback**: The app speaks back to confirm your actions
+- **AI Assistant Voice**: Chat responses can use browser TTS or optional external TTS
 - **Visual Feedback**: Shows what you said in real-time
 - **Accessibility First**: Designed for users with visual or motor impairments
 

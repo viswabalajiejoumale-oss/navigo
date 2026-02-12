@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Loader, Volume2, VolumeX, MessageCircle, X } from "lucide-react";
+import { Send, Loader, Volume2, VolumeX, MessageCircle, X, Mic, MicOff } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useApp } from "@/context/AppContext";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useVoiceNavigation } from "@/hooks/useVoiceNavigation";
 
 interface Message {
   id: string;
@@ -32,8 +33,11 @@ export default function ChatBox() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceMode, setVoiceMode] = useState<"browser" | "external">("browser");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { listening, transcript, startListening, stopListening, browserSupportsSpeechRecognition } = useVoiceNavigation();
 
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -45,6 +49,27 @@ export default function ChatBox() {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    if (!listening || !transcript) return;
+    setInput(transcript);
+  }, [listening, transcript]);
+
+  const stopVoicePlayback = () => {
+    try {
+      if (synthRef.current) {
+        synthRef.current.cancel();
+      }
+    } catch (e) {
+      console.warn('Speech synthesis cleanup warning:', e);
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      audioRef.current = null;
+    }
+  };
+
   // Initialize speech synthesis
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -54,13 +79,7 @@ export default function ChatBox() {
     }
 
     return () => {
-      try {
-        if (synthRef.current) {
-          synthRef.current.cancel();
-        }
-      } catch (e) {
-        console.warn('Speech synthesis cleanup warning:', e);
-      }
+      stopVoicePlayback();
     };
   }, [state.language]);
 
@@ -82,9 +101,8 @@ export default function ChatBox() {
     return langMap[lang] || 'en-US';
   };
 
-  const speakText = (text: string) => {
-    if (!voiceEnabled || !synthRef.current) return;
-
+  const speakWithBrowser = (text: string) => {
+    if (!synthRef.current) return;
     try {
       synthRef.current.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
@@ -96,6 +114,47 @@ export default function ChatBox() {
     } catch (error) {
       console.error('Speech synthesis error:', error);
     }
+  };
+
+  const playExternalTts = async (text: string) => {
+    try {
+      const resp = await fetch(`${API_URL}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, language: state.language }),
+      });
+
+      if (!resp.ok) {
+        return false;
+      }
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+      };
+
+      await audio.play();
+      return true;
+    } catch (error) {
+      console.warn('External TTS failed, falling back to browser:', error);
+      return false;
+    }
+  };
+
+  const speakText = async (text: string) => {
+    if (!voiceEnabled || !text.trim()) return;
+    stopVoicePlayback();
+
+    if (voiceMode === 'external') {
+      const played = await playExternalTts(text);
+      if (played) return;
+    }
+
+    speakWithBrowser(text);
   };
 
   const parseActions = (text: string) => {
@@ -192,12 +251,12 @@ export default function ChatBox() {
         },
       };
 
-      const response = await axios.post(`${API_URL}/gemini`, requestData);
+      const response = await axios.post(`${API_URL}/assistant`, requestData);
 
       const serverResp = response.data?.response || "";
       const configured = response.data?.configured !== false;
 
-      const assistantText = configured && serverResp && !serverResp.includes("not configured")
+      const assistantText = configured && serverResp
         ? serverResp
         : localAssistantResponse(input, state.language);
 
@@ -211,7 +270,7 @@ export default function ChatBox() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      speakText(assistantMessage.content);
+      void speakText(assistantMessage.content);
       handleActions(actions);
     } catch (error) {
       console.error("Chat error:", error);
@@ -223,7 +282,7 @@ export default function ChatBox() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-      speakText(errorMessage.content);
+      void speakText(errorMessage.content);
     } finally {
       setLoading(false);
     }
@@ -343,6 +402,13 @@ export default function ChatBox() {
                     )}
                   </button>
                   <button
+                    onClick={() => setVoiceMode((prev) => (prev === "browser" ? "external" : "browser"))}
+                    className="px-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 transition"
+                    title={voiceMode === "browser" ? "Browser voice" : "External voice"}
+                  >
+                    {voiceMode === "browser" ? "Browser" : "External"}
+                  </button>
+                  <button
                     onClick={() => setIsOpen(false)}
                     className="p-2 rounded-lg hover:bg-white/20 transition"
                   >
@@ -404,6 +470,18 @@ export default function ChatBox() {
                     className="flex-1 rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-background text-foreground"
                     disabled={loading}
                   />
+                  {browserSupportsSpeechRecognition && (
+                    <button
+                      onClick={() => (listening ? stopListening() : startListening())}
+                      className={`rounded-lg border border-border px-3 py-2 text-sm transition ${
+                        listening ? "bg-red-500 text-white border-red-500" : "bg-background text-foreground"
+                      }`}
+                      title={listening ? "Stop listening" : "Start voice input"}
+                      disabled={loading}
+                    >
+                      {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                    </button>
+                  )}
                   <button
                     onClick={handleSend}
                     disabled={loading || !input.trim()}

@@ -6,7 +6,7 @@ This document explains how all Google services, AI integrations, and route track
 
 1. **Google Maps** - Navigation, Directions, Places Autocomplete
 2. **Google Translate** - Multi-language support
-3. **Google Gemini AI** - AI-powered chat and response generation
+3. **OpenRouter AI** - AI-powered chat and response generation
 4. **Dialogflow** - Natural language understanding and intent detection
 5. **Route Tracking** - Real-time arrival-to-departure journey tracking
 
@@ -25,8 +25,13 @@ VITE_GOOGLE_MAPS_API_KEY=AIzaSyCRx83tSynuWANC-HA17yBGiVBImVEhX6Y
 VITE_GOOGLE_PROJECT_ID=navigo-4140f
 
 # AI Services
-VITE_GEMINI_API_KEY=AIzaSyCRx83tSynuWANC-HA17yBGiVBImVEhX6Y
+OPENROUTER_API_KEY=sk-or-v1-REPLACE_ME
+OPENROUTER_MODEL=openrouter/auto
 VITE_DIALOGFLOW_PROJECT_ID=navigo-4140f
+
+# Optional TTS (external voice responses)
+TTS_PROVIDER=voicerss
+VOICERSS_API_KEY=your_api_key
 
 # Backend
 VITE_API_URL=http://localhost:4000
@@ -34,7 +39,6 @@ VITE_API_BASE_URL=http://localhost:4000
 
 # Feature Flags
 VITE_ENABLE_ROUTE_TRACKING=true
-VITE_ENABLE_GEMINI=true
 VITE_ENABLE_DIALOGFLOW=true
 ```
 
@@ -100,32 +104,37 @@ const spanish = await translateText("Hello", "es", "en");
 
 ---
 
-## 🤖 Google Gemini AI Integration
+## 🤖 OpenRouter AI Integration
 
 ### Features
-- **Natural Language Understanding**: Process user queries
-- **Contextual Responses**: AI-powered replies
-- **Session Management**: Maintain conversation context
+- **Travel Q&A**: Natural language travel guidance
+- **Contextual Responses**: AI-powered replies with action tags
+- **Multi-language Support**: Replies match user language
+- **Optional TTS**: External voice response when configured
 
 ### Backend Endpoint
 ```
-POST /gemini
-Body: { text: string, language?: string, sessionId?: string }
-Response: { response: string, model: string, sessionId: string }
+POST /assistant
+Body: { text: string, language?: string, userProfile?: object, currentTransportMode?: string, expenses?: array, appContext?: object }
+Response: { response: string, configured: boolean }
 ```
 
 ### Usage
 ```typescript
-import { geminiQuery } from "@/lib/api";
+import { assistantQuery } from "@/lib/api";
 
-const response = await geminiQuery("What are the best transit options?");
+const response = await assistantQuery({
+  text: "What are the best transit options?",
+  language: "en"
+});
 ```
 
-### Features
-- Real-time query processing
-- Multi-language support
-- Session-based conversations
-- Error fallback responses
+### Optional TTS Endpoint
+```
+POST /tts
+Body: { text: string, language?: string }
+Response: audio/mpeg (when configured)
+```
 
 ---
 
@@ -329,7 +338,7 @@ npm install
 
 # Set environment variables in .env or system
 export DIALOGFLOW_PROJECT_ID=navigo-4140f
-export GEMINI_API_KEY=your_api_key
+export OPENROUTER_API_KEY=your_api_key
 export VITE_GOOGLE_API_KEY=your_api_key
 
 # Start backend
@@ -347,7 +356,7 @@ curl http://localhost:4000/health
 #   "timestamp": "2026-02-10T10:30:00.000Z",
 #   "services": {
 #     "dialogflow": true,
-#     "gemini": true,
+#     "assistant": true,
 #     "translate": true,
 #     "routeTracking": true
 #   }
@@ -361,11 +370,10 @@ curl http://localhost:4000/health
 ### Google Cloud Console Setup
 
 1. **Enable APIs**
-   - Cloud Translation API
-   - Dialogflow API
-   - Generative Language API (Gemini)
-   - Maps JavaScript API
-   - Maps Services
+  - Cloud Translation API
+  - Dialogflow API
+  - Maps JavaScript API
+  - Maps Services
 
 2. **Create API Keys**
    - Go to APIs & Services → Credentials
@@ -418,16 +426,16 @@ export function TravelFlow() {
 
 ### AI Assistant Example
 ```tsx
-import { geminiQuery, queryDialogflow } from "@/lib/api";
+import { assistantQuery, queryDialogflow } from "@/lib/api";
 
 async function handleUserQuery(query: string) {
   // Try Dialogflow first for structured intents
   const dialogflowResult = await queryDialogflow(query);
 
-  // If not matched, use Gemini for free-form responses
+  // If not matched, use OpenRouter for free-form responses
   if (!dialogflowResult) {
-    const geminiResult = await geminiQuery(query);
-    return geminiResult;
+    const assistantResult = await assistantQuery({ text: query });
+    return assistantResult;
   }
 
   return dialogflowResult;
@@ -469,7 +477,7 @@ async function handleUserQuery(query: string) {
 
 - [Google Maps Documentation](https://developers.google.com/maps)
 - [Google Cloud Translation](https://cloud.google.com/translate/docs)
-- [Gemini API](https://ai.google.dev/)
+- [OpenRouter](https://openrouter.ai/)
 - [Dialogflow Documentation](https://cloud.google.com/dialogflow/docs)
 
 ---
@@ -485,5 +493,5 @@ async function handleUserQuery(query: string) {
 - [ ] Frontend connects to backend successfully
 - [ ] Route tracking geolocation permissions granted
 - [ ] Translation API working
-- [ ] Gemini AI responds to queries
+- [ ] OpenRouter assistant responds to queries
 - [ ] Dialogflow intents recognized

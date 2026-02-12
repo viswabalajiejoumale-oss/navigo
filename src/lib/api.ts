@@ -77,12 +77,19 @@ export async function queryDialogflowWithLang(text: string, languageCode: string
   }
 }
 
-export async function geminiQuery(text: string, language?: string) {
+export async function assistantQuery(payload: {
+  text: string;
+  language?: string;
+  userProfile?: UserProfileDto;
+  currentTransportMode?: string;
+  expenses?: any[];
+  appContext?: Record<string, unknown>;
+}) {
   try {
-    const resp = await client.post(`/gemini`, { text, language });
+    const resp = await client.post(`/assistant`, payload);
     return resp.data?.response || "";
   } catch (e) {
-    console.warn("Gemini query failed:", e);
+    console.warn("Assistant query failed:", e);
     throw e;
   }
 }
