@@ -95,6 +95,31 @@ export async function assistantQuery(payload: {
 }
 
 // ============================================================================
+// ACCESSIBILITY FEATURES
+// ============================================================================
+
+export async function scanTicket(imageBase64: string) {
+  const resp = await client.post('/api/scan-ticket', { imageBase64 });
+  return resp.data as { raw: string };
+}
+
+export async function reportBarrier(payload: { lat: number; lng: number; type: string }) {
+  const resp = await client.post('/api/barriers', payload);
+  return resp.data;
+}
+
+export async function getNearbyBarriers(lat: number, lng: number, radius = 500) {
+  const resp = await client.get(`/api/barriers?lat=${lat}&lng=${lng}&radius=${radius}`);
+  return resp.data as Array<{
+    id: string;
+    location_lat: number;
+    location_lng: number;
+    issue_type: string;
+    status: string;
+  }>;
+}
+
+// ============================================================================
 // MAPS PLATFORM WRAPPERS
 // ============================================================================
 

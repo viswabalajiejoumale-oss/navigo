@@ -1,9 +1,12 @@
 import { motion } from "framer-motion";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
 import { TRANSPORT_MODES } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import EmergencyButton from "@/components/EmergencyButton";
+import { useTranslation } from "@/hooks/useTranslation";
+import TicketScanner from "@/components/TicketScanner";
 import {
   Bus,
   Plane,
@@ -16,6 +19,7 @@ import {
   User,
   Moon,
   Sun,
+  Ticket,
 } from "lucide-react";
 
 const iconMap: Record<string, React.ElementType> = {
@@ -37,6 +41,9 @@ const transportThemeClass: Record<string, string> = {
 const Dashboard = () => {
   const navigate = useNavigate();
   const { state, dispatch, triggerHaptic } = useApp();
+  const { t } = useTranslation();
+  const ticketLensRef = useRef<HTMLDivElement>(null);
+  const [showTicketLens, setShowTicketLens] = useState(false);
 
   const handleModeSelect = (modeId: string) => {
     dispatch({ type: "SET_TRANSPORT_MODE", payload: modeId });
@@ -79,10 +86,10 @@ const Dashboard = () => {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-body-sm text-muted-foreground">
-              Welcome back,
+              {t("Welcome back")},
             </p>
             <h1 className="text-heading-3 font-bold">
-              {state.userProfile?.name || "Traveler"}
+              {state.userProfile?.name || t("Traveler")}
             </h1>
           </div>
           <div className="flex items-center gap-2">
@@ -135,6 +142,17 @@ const Dashboard = () => {
           </motion.div>
         )}
 
+        {showTicketLens && (
+          <motion.div
+            ref={ticketLensRef}
+            className="mb-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <TicketScanner />
+          </motion.div>
+        )}
+
         {/* Section title */}
         <motion.div
           className="mb-4"
@@ -173,10 +191,10 @@ const Dashboard = () => {
                   </div>
                   <div className="flex-1">
                     <h3 className="text-heading-3 font-bold text-white">
-                      {mode.name}
+                      {t(mode.name)}
                     </h3>
                     <p className="text-body-sm text-white/80">
-                      {mode.description}
+                      {t(mode.description)}
                     </p>
                   </div>
                   <motion.div
@@ -193,7 +211,7 @@ const Dashboard = () => {
 
         {/* Quick actions */}
         <motion.div
-          className="mt-8 grid grid-cols-3 gap-3"
+          className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
@@ -204,7 +222,7 @@ const Dashboard = () => {
             onClick={() => navigate("/expenses")}
           >
             <Wallet className="h-6 w-6 text-primary" />
-            <span className="text-body-sm">Expenses</span>
+            <span className="text-body-sm">{t("Expenses")}</span>
           </Button>
           <Button
             variant="outline"
@@ -212,15 +230,30 @@ const Dashboard = () => {
             onClick={() => navigate("/ambulance")}
           >
             <User className="h-6 w-6 text-destructive" />
-            <span className="text-body-sm">Ambulance</span>
+            <span className="text-body-sm">{t("Ambulance")}</span>
           </Button>
           <Button
             variant="outline"
             className="h-20 flex-col gap-2 rounded-xl"
             onClick={() => navigate("/settings")}
+            aria-label="Open settings"
           >
             <Settings className="h-6 w-6 text-muted-foreground" />
-            <span className="text-body-sm">Settings</span>
+            <span className="text-body-sm">{t("Settings")}</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-20 flex-col gap-2 rounded-xl"
+            onClick={() => {
+              setShowTicketLens(true);
+              requestAnimationFrame(() => {
+                ticketLensRef.current?.scrollIntoView({ behavior: "smooth" });
+              });
+            }}
+            aria-label="Open ticket lens"
+          >
+            <Ticket className="h-6 w-6 text-primary" />
+            <span className="text-body-sm">Ticket Lens</span>
           </Button>
         </motion.div>
       </main>

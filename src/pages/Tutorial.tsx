@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
 import { TRANSPORT_MODES } from "@/lib/constants";
@@ -58,6 +58,14 @@ const transportThemeClass: Record<string, string> = {
   metro: "bg-gradient-to-br from-transport-metro to-transport-metro/80 text-white",
 };
 
+const INSTRUCTION_IMAGE_BASE = "/Instructions%20image%20folder/Instructions%20image%20folder";
+const INSTRUCTION_IMAGES: Record<string, { folder: string; ext: string; count: number }> = {
+  airport: { folder: "airport%20images", ext: "jpeg", count: 5 },
+  metro: { folder: "metro%20images", ext: "jpeg", count: 5 },
+  railway: { folder: "railways%20image", ext: "jpeg", count: 4 },
+  taxi: { folder: "taxi%20image", ext: "jpg", count: 4 },
+};
+
 const Tutorial = () => {
   const { modeId } = useParams<{ modeId: string }>();
   const navigate = useNavigate();
@@ -67,6 +75,19 @@ const Tutorial = () => {
   const mode = TRANSPORT_MODES.find((m) => m.id === modeId);
   const steps = TUTORIALS[modeId || "bus"] || TUTORIALS.bus;
   const headerThemeClass = transportThemeClass[modeId || ""] || "bg-foreground text-background";
+  const imageConfig = INSTRUCTION_IMAGES[modeId || ""];
+  const imageIndex = imageConfig ? (currentStep % imageConfig.count) + 1 : 1;
+  const imageSrc = imageConfig
+    ? `${INSTRUCTION_IMAGE_BASE}/${imageConfig.folder}/${imageIndex}.${imageConfig.ext}`
+    : "";
+
+  useEffect(() => {
+    if (!imageConfig) return;
+    const interval = window.setInterval(() => {
+      setCurrentStep((prev) => (prev + 1) % steps.length);
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [imageConfig, steps.length]);
 
   if (!mode) {
     return null;
@@ -132,26 +153,40 @@ const Tutorial = () => {
       </motion.header>
 
       <main className="container max-w-2xl px-4 py-6">
-        {/* Video placeholder */}
+        {/* 3D walkthrough */}
         <motion.div
           className="relative mb-6 aspect-video rounded-2xl bg-secondary overflow-hidden"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          key={currentStep}
+          key={`walkthrough-${currentStep}`}
         >
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20">
-            <motion.div
-              className="flex h-20 w-20 items-center justify-center rounded-full bg-white/90 shadow-lg cursor-pointer"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Play className="h-10 w-10 text-primary ml-1" />
-            </motion.div>
-            <p className="mt-4 text-body-md font-medium">3D Walkthrough</p>
-            <p className="text-body-sm text-muted-foreground">
-              Tap to play demonstration
-            </p>
-          </div>
+          {imageConfig ? (
+            <div className="relative h-full w-full">
+              <img
+                src={imageSrc}
+                alt={`${mode.name} step ${currentStep + 1}`}
+                className="h-full w-full object-cover kenburns"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
+              <div className="absolute bottom-3 left-3 rounded-full bg-white/85 px-3 py-1 text-xs font-semibold text-blue-900 shadow">
+                3D Walkthrough - Auto Loop
+              </div>
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20">
+              <motion.div
+                className="flex h-20 w-20 items-center justify-center rounded-full bg-white/90 shadow-lg cursor-pointer"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Play className="h-10 w-10 text-primary ml-1" />
+              </motion.div>
+              <p className="mt-4 text-body-md font-medium">3D Walkthrough</p>
+              <p className="text-body-sm text-muted-foreground">
+                Bus walkthrough will be added next
+              </p>
+            </div>
+          )}
         </motion.div>
 
         {/* Tutorial content */}
@@ -235,6 +270,25 @@ const Tutorial = () => {
           ))}
         </div>
       </main>
+      <style>
+        {`
+          .kenburns {
+            animation: kenburns 10s ease-in-out infinite;
+            transform-origin: center;
+          }
+          @keyframes kenburns {
+            0% {
+              transform: scale(1) translate(0, 0);
+            }
+            50% {
+              transform: scale(1.08) translate(-1%, -1%);
+            }
+            100% {
+              transform: scale(1) translate(0, 0);
+            }
+          }
+        `}
+      </style>
     </div>
   );
 };

@@ -2,16 +2,41 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import http from 'http';
+import { Server as SocketServer } from 'socket.io';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 const OPENROUTER_URL = process.env.OPENROUTER_API_URL || 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/auto';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-pro-1.5';
+const OPENROUTER_VISION_MODEL = process.env.OPENROUTER_VISION_MODEL || 'openai/gpt-4o';
 
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' }));
+
+const server = http.createServer(app);
+const io = new SocketServer(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+io.on('connection', (socket) => {
+  socket.on('join_room', (roomId) => {
+    if (!roomId) return;
+    const roomName = `room_${roomId}`;
+    socket.join(roomName);
+  });
+
+  socket.on('telemetry_update', (payload) => {
+    if (!payload?.roomId) return;
+    const roomName = `room_${payload.roomId}`;
+    io.to(roomName).emit('telemetry_received', payload);
+  });
+});
 
 function buildSystemPrompt({ language, userProfile, transportMode, expenses, appContext }) {
   const safeProfile = userProfile || {};
@@ -142,9 +167,124 @@ async function callOpenRouter({ text, systemPrompt }) {
     max_tokens: Number(process.env.OPENROUTER_MAX_TOKENS || 300)
   };
 
-  const response = await axios.post(OPENROUTER_URL, payload, { headers, timeout: 20000 });
-  const content = response.data?.choices?.[0]?.message?.content || '';
-  return { configured: true, content };
+  try {
+    const response = await axios.post(OPENROUTER_URL, payload, { headers, timeout: 20000 });
+    const content = response.data?.choices?.[0]?.message?.content || '';
+    return { configured: true, content };
+  } catch (error) {
+    const status = error?.response?.status;
+    if (status === 401) {
+      const err = new Error('OpenRouter unauthorized');
+      err.status = 401;
+      throw err;
+    }
+    throw error;
+  }
+}
+
+async function callOpenRouterVision({ imageBase64 }) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    return { configured: false, content: null };
+  }
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json'
+  };
+  if (process.env.OPENROUTER_SITE_URL) {
+    headers['HTTP-Referer'] = process.env.OPENROUTER_SITE_URL;
+  }
+  if (process.env.OPENROUTER_APP_NAME) {
+    headers['X-Title'] = process.env.OPENROUTER_APP_NAME;
+  }
+
+  const payload = {
+    model: OPENROUTER_VISION_MODEL,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text:
+              'You are a helpful travel assistant. Analyze this ticket image and provide a clear, natural explanation. Include: 1) Origin and destination, 2) Travel date and time, 3) Transport type (bus/train/flight/metro), 4) Platform or gate number if visible, 5) Whether the ticket is expired or still valid based on the departure date/time shown. Be concise and helpful.'
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:image/jpeg;base64,${imageBase64}`
+            }
+          }
+        ]
+      }
+    ],
+    temperature: 0.3,
+    max_tokens: 300
+  };
+
+  try {
+    const response = await axios.post(OPENROUTER_URL, payload, { headers, timeout: 20000 });
+    const content = response.data?.choices?.[0]?.message?.content || '';
+    return { configured: true, content };
+  } catch (error) {
+    const status = error?.response?.status;
+    if (status === 401) {
+      const err = new Error('OpenRouter unauthorized');
+      err.status = 401;
+      throw err;
+    }
+    if (error?.response?.data) {
+      console.error('❌ OpenRouter vision error detail:', error.response.data);
+    }
+    throw error;
+  }
+}
+
+const barrierReports = [];
+const ambulanceAdmins = [
+  {
+    id: '1',
+    ownerName: 'Pondy Emergency Services',
+    licenseNumber: 'TN-PY-EM-001',
+    ambulanceNumber: 'PY-01-AMB-1001',
+    vehicleType: 'Advanced Life Support',
+    contact: '+91-98765-00001',
+    available: true
+  },
+  {
+    id: '2',
+    ownerName: 'Chennai Rapid Care',
+    licenseNumber: 'TN-CH-EM-014',
+    ambulanceNumber: 'TN-09-AMB-2214',
+    vehicleType: 'Basic Life Support',
+    contact: '+91-98765-00002',
+    available: true
+  },
+  {
+    id: '3',
+    ownerName: 'Coimbatore MedAssist',
+    licenseNumber: 'TN-CO-EM-203',
+    ambulanceNumber: 'TN-33-AMB-3203',
+    vehicleType: 'Neonatal',
+    contact: '+91-98765-00003',
+    available: false
+  }
+];
+
+function toRad(value) {
+  return (value * Math.PI) / 180;
+}
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 function mapVoiceRssLanguage(language) {
@@ -164,6 +304,48 @@ function mapVoiceRssLanguage(language) {
   };
   return map[language] || 'en-us';
 }
+
+app.get('/ambulances', (req, res) => {
+  return res.json(ambulanceAdmins);
+});
+
+app.post('/ambulances', (req, res) => {
+  const payload = req.body || {};
+  const requiredFields = ['ownerName', 'licenseNumber', 'ambulanceNumber', 'vehicleType', 'contact'];
+  const missing = requiredFields.filter((field) => !payload[field]);
+  if (missing.length > 0) {
+    return res.status(400).json({ error: `Missing fields: ${missing.join(', ')}` });
+  }
+
+  const newAdmin = {
+    id: String(Date.now()),
+    ownerName: String(payload.ownerName),
+    licenseNumber: String(payload.licenseNumber),
+    ambulanceNumber: String(payload.ambulanceNumber),
+    vehicleType: String(payload.vehicleType),
+    contact: String(payload.contact),
+    available: Boolean(payload.available ?? true)
+  };
+
+  ambulanceAdmins.push(newAdmin);
+  return res.status(201).json(newAdmin);
+});
+
+app.patch('/ambulances/:id', (req, res) => {
+  const { id } = req.params;
+  const { available } = req.body || {};
+  const target = ambulanceAdmins.find((admin) => admin.id === id);
+  if (!target) {
+    return res.status(404).json({ error: 'Ambulance not found' });
+  }
+
+  if (typeof available !== 'boolean') {
+    return res.status(400).json({ error: 'available must be a boolean' });
+  }
+
+  target.available = available;
+  return res.json(target);
+});
 
 app.post('/assistant', async (req, res) => {
   try {
@@ -188,6 +370,9 @@ app.post('/assistant', async (req, res) => {
     try {
       result = await callOpenRouter({ text: sanitizedText, systemPrompt });
     } catch (error) {
+      if (error?.status === 401) {
+        return res.status(401).json({ error: 'OpenRouter unauthorized' });
+      }
       console.error('❌ OpenRouter error:', error.message);
       result = { configured: true, content: null };
     }
@@ -247,7 +432,74 @@ app.post('/tts', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.post('/api/scan-ticket', async (req, res) => {
+  try {
+    const { imageBase64 } = req.body || {};
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
+      return res.status(400).json({ error: 'imageBase64 is required' });
+    }
+
+    const sanitized = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+
+    let result;
+    try {
+      result = await callOpenRouterVision({ imageBase64: sanitized });
+    } catch (error) {
+      if (error?.status === 401) {
+        return res.status(401).json({ error: 'OpenRouter unauthorized' });
+      }
+      console.error('❌ Ticket scan error:', error.message);
+      if (error?.response?.data) {
+        console.error('❌ Ticket scan error detail:', error.response.data);
+      }
+      return res.status(500).json({ error: 'Ticket scan failed' });
+    }
+
+    if (!result.configured) {
+      return res.status(501).json({ error: 'OpenRouter not configured', configured: false });
+    }
+
+    return res.json({ raw: result.content });
+  } catch (error) {
+    console.error('❌ Ticket scan error:', error.message);
+    return res.status(500).json({ error: 'Ticket scan failed' });
+  }
+});
+
+app.post('/api/barriers', async (req, res) => {
+  const { lat, lng, type } = req.body || {};
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !type) {
+    return res.status(400).json({ error: 'lat, lng, and type are required' });
+  }
+
+  const report = {
+    id: String(Date.now()),
+    location_lat: lat,
+    location_lng: lng,
+    issue_type: String(type),
+    status: 'open'
+  };
+  barrierReports.push(report);
+  return res.json(report);
+});
+
+app.get('/api/barriers', async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const radius = Number(req.query.radius || 500);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: 'lat and lng are required' });
+  }
+
+  const nearby = barrierReports.filter((report) => {
+    const distance = haversineMeters(lat, lng, report.location_lat, report.location_lng);
+    return distance <= radius;
+  });
+
+  return res.json(nearby);
+});
+
+server.listen(PORT, () => {
   console.log(`🚀 Backend server running on http://localhost:${PORT}`);
 });
 

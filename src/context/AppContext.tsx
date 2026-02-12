@@ -10,6 +10,16 @@ export interface UserProfile {
   preferences: string;
 }
 
+export interface TripDetails {
+  origin: string;
+  destination: string;
+  time: string;
+  transportType: string;
+  platform: string;
+  scannedAt: string;
+  status: "ongoing" | "expired" | "unknown";
+}
+
 export interface TripExpense {
   id: string;
   mode: string;
@@ -35,6 +45,7 @@ interface AppState {
   highContrast: boolean;
   darkMode: boolean;
   userProfile: UserProfile | null;
+  tripDetails: TripDetails | null;
   hasCompletedOnboarding: boolean;
   currentTransportMode: string | null;
   expenses: TripExpense[];
@@ -48,6 +59,7 @@ type AppAction =
   | { type: "TOGGLE_HIGH_CONTRAST" }
   | { type: "TOGGLE_DARK_MODE" }
   | { type: "SET_USER_PROFILE"; payload: UserProfile }
+  | { type: "SET_TRIP_DETAILS"; payload: TripDetails | null }
   | { type: "COMPLETE_ONBOARDING" }
   | { type: "SET_TRANSPORT_MODE"; payload: string | null }
   | { type: "ADD_EXPENSE"; payload: TripExpense }
@@ -59,6 +71,7 @@ type AppAction =
 const initialState: AppState = {
   ...DEFAULT_PREFERENCES,
   userProfile: null,
+  tripDetails: null,
   hasCompletedOnboarding: false,
   currentTransportMode: null,
   expenses: [],
@@ -106,6 +119,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, darkMode: !state.darkMode };
     case "SET_USER_PROFILE":
       return { ...state, userProfile: action.payload };
+    case "SET_TRIP_DETAILS":
+      return { ...state, tripDetails: action.payload };
     case "COMPLETE_ONBOARDING":
       return { ...state, hasCompletedOnboarding: true };
     case "SET_TRANSPORT_MODE":

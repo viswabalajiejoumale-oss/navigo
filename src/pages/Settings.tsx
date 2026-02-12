@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
+import { useTranslation } from "@/hooks/useTranslation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import BarrierReporter from "@/components/BarrierReporter";
+import { useGuardianMode } from "@/hooks/useGuardianMode";
 import {
 	ArrowLeft,
 	User,
@@ -23,8 +26,49 @@ import {
 const Settings = () => {
 	const navigate = useNavigate();
 	const { state, dispatch } = useApp();
+	const { t } = useTranslation();
 	const [issueText, setIssueText] = useState("");
 	const [feedbackText, setFeedbackText] = useState("");
+	const [name, setName] = useState(state.userProfile?.name || "");
+	const [age, setAge] = useState(state.userProfile?.age || "");
+	const [mobilityNeeds, setMobilityNeeds] = useState(state.userProfile?.mobilityNeeds || "");
+	const [preferences, setPreferences] = useState(state.userProfile?.preferences || "");
+	const [guardianEnabled, setGuardianEnabled] = useState(false);
+
+	const guardianRoomId = useMemo(() => {
+		const raw = state.userProfile?.name || "guest";
+		return raw.trim().toLowerCase().replace(/\s+/g, "_") || "guest";
+	}, [state.userProfile?.name]);
+
+	const { shareUrl, batteryLevel } = useGuardianMode({
+		enabled: guardianEnabled,
+		roomId: guardianRoomId,
+		status: state.currentTransportMode
+			? `On ${state.currentTransportMode}`
+			: "Navigating",
+	});
+
+	const batteryPercent = Number(batteryLevel.replace("%", ""));
+	const batteryTone = Number.isFinite(batteryPercent)
+		? batteryPercent >= 100
+			? "text-success"
+			: batteryPercent >= 50
+			? "text-warning"
+			: "text-destructive"
+		: "text-muted-foreground";
+
+	const handleSaveProfile = () => {
+		dispatch({
+			type: "SET_USER_PROFILE",
+			payload: {
+				name: name.trim(),
+				age: age.trim(),
+				mobilityNeeds: mobilityNeeds.trim(),
+				preferences: preferences.trim(),
+			},
+		});
+		console.log("Profile saved");
+	};
 
 	const handleSubmitIssue = () => {
 		if (!issueText.trim()) return;
@@ -51,6 +95,7 @@ const Settings = () => {
 						size="icon"
 						className="h-11 w-11 rounded-xl"
 						onClick={() => navigate("/dashboard")}
+						aria-label="Go back"
 					>
 						<ArrowLeft className="h-5 w-5" />
 					</Button>
@@ -74,22 +119,45 @@ const Settings = () => {
 					<CardContent className="space-y-4">
 						<div>
 							<label className="text-body-sm text-muted-foreground">Name</label>
-							<Input value={state.userProfile?.name || ""} placeholder="Your name" readOnly />
+							<Input 
+								value={name} 
+								onChange={(e) => setName(e.target.value)}
+								placeholder="Your name" 
+							/>
 						</div>
 						<div className="grid grid-cols-2 gap-4">
 							<div>
 								<label className="text-body-sm text-muted-foreground">Age</label>
-								<Input value={state.userProfile?.age || ""} placeholder="Age" readOnly />
+								<Input 
+									value={age} 
+									onChange={(e) => setAge(e.target.value)}
+									placeholder="Age" 
+								/>
 							</div>
 							<div>
 								<label className="text-body-sm text-muted-foreground">Mobility</label>
-								<Input value={state.userProfile?.mobilityNeeds || ""} placeholder="Mobility needs" readOnly />
+								<Input 
+									value={mobilityNeeds} 
+									onChange={(e) => setMobilityNeeds(e.target.value)}
+									placeholder="Mobility needs" 
+								/>
 							</div>
 						</div>
 						<div>
 							<label className="text-body-sm text-muted-foreground">Preferences</label>
-							<Input value={state.userProfile?.preferences || ""} placeholder="Travel preferences" readOnly />
+							<Input 
+								value={preferences} 
+								onChange={(e) => setPreferences(e.target.value)}
+								placeholder="Travel preferences" 
+							/>
 						</div>
+						<Button 
+							className="w-full" 
+							onClick={handleSaveProfile}
+							aria-label="Save profile"
+						>
+							{t("Save Profile")}
+						</Button>
 					</CardContent>
 				</Card>
 
@@ -105,7 +173,7 @@ const Settings = () => {
 							<p className="text-body-sm text-muted-foreground">Trips recorded</p>
 							<p className="text-heading-3 font-bold">{state.expenses.length}</p>
 						</div>
-						<Button variant="outline" onClick={() => navigate("/expenses")}>View</Button>
+						<Button variant="outline" onClick={() => navigate("/expenses")} aria-label="View expenses">View</Button>
 					</CardContent>
 				</Card>
 
@@ -117,9 +185,9 @@ const Settings = () => {
 						</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-3">
-						<Button className="w-full" variant="outline">Weekly summary</Button>
-						<Button className="w-full" variant="outline">Monthly travel report</Button>
-						<Button className="w-full" variant="outline">Export CSV</Button>
+						<Button className="w-full" variant="outline" aria-label="Weekly summary">Weekly summary</Button>
+						<Button className="w-full" variant="outline" aria-label="Monthly travel report">Monthly travel report</Button>
+						<Button className="w-full" variant="outline" aria-label="Export CSV">Export CSV</Button>
 					</CardContent>
 				</Card>
 
@@ -146,7 +214,29 @@ const Settings = () => {
 							<Switch
 								checked={state.darkMode}
 								onCheckedChange={() => dispatch({ type: "TOGGLE_DARK_MODE" })}
+								aria-label="Toggle dark mode"
 							/>
+						</div>
+						<div className="flex items-center justify-between rounded-xl border p-3">
+							<div className="flex items-center gap-3">
+								<Shield className="h-5 w-5" />
+								<div>
+									<p className="text-body-md font-medium">Guardian Mode</p>
+									<p className="text-body-sm text-muted-foreground">Share live location and battery</p>
+								</div>
+							</div>
+							<Switch
+								checked={guardianEnabled}
+								onCheckedChange={setGuardianEnabled}
+								aria-label="Toggle guardian mode"
+							/>
+						</div>
+						<div className="rounded-xl border p-3">
+							<p className="text-body-sm text-muted-foreground">Share link</p>
+							<p className="text-body-md font-medium break-all">{shareUrl}</p>
+							<p className={`text-body-xs ${batteryTone}`}>
+								Battery: {batteryLevel}
+							</p>
 						</div>
 						<div className="flex items-center justify-between rounded-xl border p-3">
 							<div className="flex items-center gap-3">
@@ -159,10 +249,14 @@ const Settings = () => {
 							<Switch
 								checked={state.highContrast}
 								onCheckedChange={() => dispatch({ type: "TOGGLE_HIGH_CONTRAST" })}
+								aria-label="Toggle high contrast"
 							/>
 						</div>
 					</CardContent>
 				</Card>
+
+
+				<BarrierReporter />
 
 				<Card>
 					<CardHeader>
@@ -178,7 +272,7 @@ const Settings = () => {
 							placeholder="Describe the problem you faced"
 							className="min-h-[120px]"
 						/>
-						<Button onClick={handleSubmitIssue} className="w-full">Submit issue</Button>
+						<Button onClick={handleSubmitIssue} className="w-full" aria-label="Submit issue">Submit issue</Button>
 					</CardContent>
 				</Card>
 
@@ -196,7 +290,7 @@ const Settings = () => {
 							placeholder="Tell us what you want to see next"
 							className="min-h-[120px]"
 						/>
-						<Button onClick={handleSubmitFeedback} className="w-full">Send feedback</Button>
+						<Button onClick={handleSubmitFeedback} className="w-full" aria-label="Send feedback">Send feedback</Button>
 					</CardContent>
 				</Card>
 
@@ -208,8 +302,8 @@ const Settings = () => {
 						</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-3">
-						<Button variant="outline" className="w-full">Help center</Button>
-						<Button variant="outline" className="w-full">Safety guidelines</Button>
+						<Button variant="outline" className="w-full" aria-label="Help center">Help center</Button>
+						<Button variant="outline" className="w-full" aria-label="Safety guidelines">Safety guidelines</Button>
 					</CardContent>
 				</Card>
 			</main>

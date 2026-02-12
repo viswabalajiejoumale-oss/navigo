@@ -4,6 +4,7 @@ import { Send, Loader, Volume2, VolumeX, MessageCircle, X, Mic, MicOff } from "l
 import { useTranslation } from "@/hooks/useTranslation";
 import { useApp } from "@/context/AppContext";
 import axios from "axios";
+import { translateText } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { useVoiceNavigation } from "@/hooks/useVoiceNavigation";
 
@@ -21,15 +22,28 @@ export default function ChatBox() {
   const { t } = useTranslation();
   const { state, dispatch } = useApp();
   const navigate = useNavigate();
+  
+  const getInitialGreeting = () => {
+    const greetings: Record<string, string> = {
+      hi: "नमस्ते! मैं Navigo AI Assistant हूँ। मैं आपकी यात्रा में आपकी मदद कर सकता हूँ।",
+      ta: "வணக்கம்! நான் Navigo AI உதவியாளர். உங்கள் பயணத்தில் உங்களுக்கு உதவ முடியும்.",
+      te: "నమస్కారం! నేను Navigo AI Assistant. మీ ప్రయాణంలో మీకు సహాయం చేయగలను.",
+      bn: "হ্যালো! আমি Navigo AI সহায়ক। আমি আপনার ভ্রমণে সাহায্য করতে পারি।",
+      ml: "ഹലോ! ഞാൻ Navigo AI Assistant ആണ്. നിങ്ങളുടെ യാത്രയിൽ സഹായിക്കാം.",
+      kn: "ನಮಸ್ಕಾರ! ನಾನು Navigo AI Assistant. ನಿಮ್ಮ ಪ್ರಯಾಣದಲ್ಲಿ ಸಹಾಯ ಮಾಡಬಲ್ಲೆನು.",
+      mr: "नमस्कार! मी Navigo AI Assistant आहे। मी तुमच्या प्रवासात मदत करू शकतो.",
+      gu: "નમસ્તે! હું Navigo AI Assistant છું। હું તમારી યાત્રામાં મદદ કરી શકું છું.",
+      pa: "ਸਤ ਸ੍ਰੀ ਅਕਾਲ! ਮੈਂ Navigo AI Assistant ਹਾਂ। ਮੈਂ ਤੁਹਾਡੀ ਯਾਤਰਾ ਵਿੱਚ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ।",
+      es: "¡Hola! Soy el Asistente de IA Navigo. Puedo ayudarte en tu viaje.",
+      fr: "Bonjour! Je suis l'Assistant IA Navigo. Je peux vous aider dans votre voyage.",
+      en: "Hello! I'm Navigo AI Assistant. I can help you with your travel. How can I assist you?",
+    };
+    const lang = state.language || "en";
+    return greetings[lang] || greetings.en;
+  };
+
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "नमस्ते! मैं Navigo AI Assistant हूँ। मैं आपकी यात्रा में आपकी मदद कर सकता हूँ। क्या मैं आपकी सहायता कर सकता हूँ?",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -48,6 +62,18 @@ export default function ChatBox() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    // Always set initial greeting based on current language
+    setMessages([
+      {
+        id: "1",
+        role: "assistant",
+        content: getInitialGreeting(),
+        timestamp: new Date(),
+      },
+    ]);
+  }, [state.language]);
 
   useEffect(() => {
     if (!listening || !transcript) return;
@@ -173,6 +199,18 @@ export default function ChatBox() {
     return { cleanedText, actions };
   };
 
+  const translateIfNeeded = async (text: string) => {
+    const target = state.language || "en";
+    if (target === "en") return text;
+
+    try {
+      return await translateText(text, target);
+    } catch (error) {
+      console.warn("Translation failed, using original text:", error);
+      return text;
+    }
+  };
+
   const handleActions = (actions: string[]) => {
     if (!actions.length) return;
 
@@ -261,11 +299,12 @@ export default function ChatBox() {
         : localAssistantResponse(input, state.language);
 
       const { cleanedText, actions } = parseActions(assistantText);
+      const translatedText = await translateIfNeeded(cleanedText || assistantText);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: cleanedText || assistantText,
+        content: translatedText,
         timestamp: new Date(),
       };
 
@@ -275,10 +314,11 @@ export default function ChatBox() {
     } catch (error) {
       console.error("Chat error:", error);
       const fallback = localAssistantResponse(input, state.language);
+      const translatedFallback = await translateIfNeeded(fallback || "Sorry, I encountered an error. Please try again.");
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: fallback || "Sorry, I encountered an error. Please try again.",
+        content: translatedFallback,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
