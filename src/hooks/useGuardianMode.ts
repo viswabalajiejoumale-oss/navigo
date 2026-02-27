@@ -28,8 +28,11 @@ export function useGuardianMode({ enabled, roomId, status }: GuardianOptions) {
 
     const updateBattery = async () => {
       try {
-        if ("getBattery" in navigator) {
-          const battery = await (navigator as any).getBattery();
+        const batteryProvider = navigator as Navigator & {
+          getBattery?: () => Promise<{ level: number }>;
+        };
+        if (typeof batteryProvider.getBattery === "function") {
+          const battery = await batteryProvider.getBattery();
           if (!mounted) return;
           const next = `${Math.round(battery.level * 100)}%`;
           batteryRef.current = next;
@@ -56,7 +59,7 @@ export function useGuardianMode({ enabled, roomId, status }: GuardianOptions) {
         () => {
           // ignore location errors; still keep socket alive
         },
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
       );
     }
 

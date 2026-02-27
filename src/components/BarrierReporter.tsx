@@ -7,6 +7,9 @@ const ISSUE_OPTIONS = [
   { value: "lift_broken", label: "Lift Broken" },
   { value: "ramp_blocked", label: "Ramp Blocked" },
   { value: "escalator_down", label: "Escalator Down" },
+  { value: "pothole", label: "Pothole" },
+  { value: "broken_streetlight", label: "Broken Streetlight" },
+  { value: "sidewalk_obstruction", label: "Sidewalk Obstruction" },
 ];
 
 export default function BarrierReporter() {
@@ -38,7 +41,7 @@ export default function BarrierReporter() {
         () => {
           setError("Location permission denied.");
         },
-        { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 },
       );
     } catch {
       setError("Failed to submit report.");
@@ -53,7 +56,10 @@ export default function BarrierReporter() {
         <CardTitle>Barrier Reporting</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <label className="text-body-sm text-muted-foreground" htmlFor="barrier-issue">
+        <label
+          className="text-body-sm text-muted-foreground"
+          htmlFor="barrier-issue"
+        >
           Issue type
         </label>
         <select

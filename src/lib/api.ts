@@ -32,12 +32,17 @@ export async function getAmbulances(): Promise<AmbulanceAdminDto[]> {
   return resp.data;
 }
 
-export async function registerAmbulance(payload: Omit<AmbulanceAdminDto, "id">) {
+export async function registerAmbulance(
+  payload: Omit<AmbulanceAdminDto, "id">,
+) {
   const resp = await client.post("/ambulances", payload);
   return resp.data as AmbulanceAdminDto;
 }
 
-export async function updateAmbulanceAvailability(id: string, available: boolean) {
+export async function updateAmbulanceAvailability(
+  id: string,
+  available: boolean,
+) {
   const resp = await client.patch(`/ambulances/${id}`, { available });
   return resp.data as AmbulanceAdminDto;
 }
@@ -48,7 +53,9 @@ export async function getUserProfile(userId?: string) {
 }
 
 export async function getExpenses(userId?: string) {
-  const resp = await client.get(`/expenses${userId ? `?userId=${userId}` : ""}`);
+  const resp = await client.get(
+    `/expenses${userId ? `?userId=${userId}` : ""}`,
+  );
   return resp.data;
 }
 
@@ -67,7 +74,10 @@ export async function queryDialogflow(text: string) {
   }
 }
 
-export async function queryDialogflowWithLang(text: string, languageCode: string) {
+export async function queryDialogflowWithLang(
+  text: string,
+  languageCode: string,
+) {
   try {
     const resp = await client.post(`/dialogflow`, { text, languageCode });
     return resp.data?.response || "";
@@ -99,17 +109,178 @@ export async function assistantQuery(payload: {
 // ============================================================================
 
 export async function scanTicket(imageBase64: string) {
-  const resp = await client.post('/api/scan-ticket', { imageBase64 });
+  const resp = await client.post("/api/scan-ticket", { imageBase64 });
   return resp.data as { raw: string };
 }
 
-export async function reportBarrier(payload: { lat: number; lng: number; type: string }) {
-  const resp = await client.post('/api/barriers', payload);
+export async function scanSignage(imageBase64: string) {
+  const resp = await client.post("/api/scan-signage", { imageBase64 });
+  return resp.data as { raw: string };
+}
+
+export async function reportBarrier(payload: {
+  lat: number;
+  lng: number;
+  type: string;
+}) {
+  const resp = await client.post("/api/barriers", payload);
   return resp.data;
 }
 
-export async function getNearbyBarriers(lat: number, lng: number, radius = 500) {
-  const resp = await client.get(`/api/barriers?lat=${lat}&lng=${lng}&radius=${radius}`);
+export async function reportCrowdDensity(payload: {
+  routeId: string;
+  mode: string;
+  level: "plenty_seats" | "standing_only" | "full";
+  reporterId?: string;
+}) {
+  const resp = await client.post("/api/crowd-density", payload);
+  return resp.data as {
+    report: {
+      id: string;
+      routeId: string;
+      mode: string;
+      level: "plenty_seats" | "standing_only" | "full";
+      reporterId: string;
+      createdAt: string;
+    };
+    summary: {
+      counts: Record<"plenty_seats" | "standing_only" | "full", number>;
+      dominant: "plenty_seats" | "standing_only" | "full";
+      totalReports: number;
+    };
+  };
+}
+
+export async function getCrowdDensity(routeId: string, mode: string) {
+  const resp = await client.get(
+    `/api/crowd-density?routeId=${encodeURIComponent(routeId)}&mode=${encodeURIComponent(mode)}`,
+  );
+  return resp.data as {
+    routeId: string;
+    mode: string;
+    counts: Record<"plenty_seats" | "standing_only" | "full", number>;
+    dominant: "plenty_seats" | "standing_only" | "full";
+    totalReports: number;
+    updatedAt: string;
+  };
+}
+
+export async function reportRoadHazard(payload: {
+  lat: number;
+  lng: number;
+  type: "pothole" | "broken_streetlight" | "sidewalk_obstruction";
+  source?: "manual" | "voice";
+}) {
+  const resp = await client.post("/api/road-hazards", payload);
+  return resp.data as {
+    id: string;
+    lat: number;
+    lng: number;
+    type: "pothole" | "broken_streetlight" | "sidewalk_obstruction";
+    source: string;
+    createdAt: string;
+    status: string;
+  };
+}
+
+export async function getRoadHazards(lat: number, lng: number, radius = 1000) {
+  const resp = await client.get(
+    `/api/road-hazards?lat=${lat}&lng=${lng}&radius=${radius}`,
+  );
+  return resp.data as Array<{
+    id: string;
+    lat: number;
+    lng: number;
+    type: "pothole" | "broken_streetlight" | "sidewalk_obstruction";
+    source: string;
+    createdAt: string;
+    status: string;
+  }>;
+}
+
+export async function createPreArrivalNote(payload: {
+  ambulanceId: string;
+  hospitalId: string;
+  patientName?: string;
+  bloodType?: string;
+  allergies?: string;
+  symptoms?: string;
+  etaMinutes?: number;
+}) {
+  const resp = await client.post("/api/pre-arrival-notes", payload);
+  return resp.data as {
+    id: string;
+    ambulanceId: string;
+    hospitalId: string;
+    patientName: string;
+    bloodType: string;
+    allergies: string;
+    symptoms: string;
+    etaMinutes: number;
+    createdAt: string;
+  };
+}
+
+export async function getPreArrivalNotes(params?: {
+  hospitalId?: string;
+  ambulanceId?: string;
+}) {
+  const query = new URLSearchParams();
+  if (params?.hospitalId) query.set("hospitalId", params.hospitalId);
+  if (params?.ambulanceId) query.set("ambulanceId", params.ambulanceId);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const resp = await client.get(`/api/pre-arrival-notes${suffix}`);
+  return resp.data as Array<{
+    id: string;
+    ambulanceId: string;
+    hospitalId: string;
+    patientName: string;
+    bloodType: string;
+    allergies: string;
+    symptoms: string;
+    etaMinutes: number;
+    createdAt: string;
+  }>;
+}
+
+export async function reportFuelPrice(payload: {
+  stop: string;
+  price: number;
+  source?: string;
+}) {
+  const resp = await client.post("/api/fuel-prices/report", payload);
+  return resp.data as {
+    id: string;
+    stop: string;
+    price: number;
+    source: string;
+    createdAt: string;
+  };
+}
+
+export async function getFuelPrices(stop: string) {
+  const resp = await client.get(
+    `/api/fuel-prices?stop=${encodeURIComponent(stop)}`,
+  );
+  return resp.data as {
+    stop: string;
+    source: string;
+    prices: number[];
+    latest: number;
+    weeklyLow: number;
+    isWeeklyLowNow: boolean;
+    updatedAt: string;
+  };
+}
+
+export async function getNearbyBarriers(
+  lat: number,
+  lng: number,
+  radius = 500,
+) {
+  const resp = await client.get(
+    `/api/barriers?lat=${lat}&lng=${lng}&radius=${radius}`,
+  );
   return resp.data as Array<{
     id: string;
     location_lat: number;
@@ -124,37 +295,48 @@ export async function getNearbyBarriers(lat: number, lng: number, radius = 500) 
 // ============================================================================
 
 export async function geocodeAddress(address: string) {
-  const resp = await client.post('/maps/geocode', { address });
+  const resp = await client.post("/maps/geocode", { address });
   return resp.data;
 }
 
 export async function geocodeLatLng(lat: number, lng: number) {
-  const resp = await client.post('/maps/geocode', { lat, lng });
+  const resp = await client.post("/maps/geocode", { lat, lng });
   return resp.data;
 }
 
-export async function getDirections(origin: string, destination: string, mode?: string) {
-  const resp = await client.post('/maps/directions', { origin, destination, mode });
+export async function getDirections(
+  origin: string,
+  destination: string,
+  mode?: string,
+) {
+  const resp = await client.post("/maps/directions", {
+    origin,
+    destination,
+    mode,
+  });
   return resp.data;
 }
 
 export async function getDistanceMatrix(origins: string, destinations: string) {
-  const resp = await client.post('/maps/distance-matrix', { origins, destinations });
+  const resp = await client.post("/maps/distance-matrix", {
+    origins,
+    destinations,
+  });
   return resp.data;
 }
 
 export async function getAirQuality(lat: number, lng: number) {
-  const resp = await client.post('/maps/air-quality', { lat, lng });
+  const resp = await client.post("/maps/air-quality", { lat, lng });
   return resp.data;
 }
 
 export async function getWeather(lat: number, lng: number) {
-  const resp = await client.post('/maps/weather', { lat, lng });
+  const resp = await client.post("/maps/weather", { lat, lng });
   return resp.data;
 }
 
 export async function validateAddress(payload: any) {
-  const resp = await client.post('/maps/address-validation', payload);
+  const resp = await client.post("/maps/address-validation", payload);
   return resp.data;
 }
 
@@ -162,42 +344,52 @@ export async function validateAddress(payload: any) {
 // GOOGLE TRANSLATE
 // ============================================================================
 
-export async function translateText(text: string, targetLanguage: string, sourceLanguage?: string) {
+export async function translateText(
+  text: string,
+  targetLanguage: string,
+  sourceLanguage?: string,
+) {
   try {
-    const resp = await client.post('/translate', {
+    const resp = await client.post("/translate", {
       text,
       targetLanguage,
-      sourceLanguage: sourceLanguage || 'auto'
+      sourceLanguage: sourceLanguage || "auto",
     });
     // If backend indicates translation not configured, fallback below
     if (resp.status === 501 || resp.data?.error) {
-      throw new Error('Backend translation not configured');
+      throw new Error("Backend translation not configured");
     }
     return resp.data?.translated || text;
   } catch (e) {
-    console.warn("Translation failed via backend, attempting client-side fallback:", e?.message || e);
+    console.warn(
+      "Translation failed via backend, attempting client-side fallback:",
+      e?.message || e,
+    );
     // Client-side fallback: if a Vite-provided Google API key is present, call Translate API directly from client
     const clientKey = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
     if (clientKey) {
       try {
         const body = new URLSearchParams();
-        body.append('q', text);
-        body.append('target', targetLanguage);
-        if (sourceLanguage) body.append('source', sourceLanguage);
-        body.append('format', 'text');
+        body.append("q", text);
+        body.append("target", targetLanguage);
+        if (sourceLanguage) body.append("source", sourceLanguage);
+        body.append("format", "text");
 
-        const r = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${clientKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: body.toString(),
-        });
+        const r = await fetch(
+          `https://translation.googleapis.com/language/translate/v2?key=${clientKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: body.toString(),
+          },
+        );
 
         if (r.ok) {
           const j = await r.json();
           return j.data?.translations?.[0]?.translatedText || text;
         }
       } catch (err) {
-        console.warn('Client-side translate failed:', err);
+        console.warn("Client-side translate failed:", err);
       }
     }
 
@@ -222,22 +414,28 @@ export interface RouteTrack {
   endTime: string | null;
   distance: number;
   duration: number;
-  waypoints: Array<{ lat: number; lng: number; timestamp: string; distance: number; duration: number }>;
-  status: 'started' | 'active' | 'completed';
+  waypoints: Array<{
+    lat: number;
+    lng: number;
+    timestamp: string;
+    distance: number;
+    duration: number;
+  }>;
+  status: "started" | "active" | "completed";
 }
 
 export async function startRouteTracking(
   origin: string,
   destination: string,
   userId: string,
-  transportMode: string = 'mixed'
+  transportMode: string = "mixed",
 ) {
   try {
-    const resp = await client.post('/routes/start', {
+    const resp = await client.post("/routes/start", {
       origin,
       destination,
       userId,
-      transportMode
+      transportMode,
     });
     return resp.data as { trackId: string; track: RouteTrack };
   } catch (e) {
@@ -251,14 +449,14 @@ export async function updateRouteLocation(
   lat: number,
   lng: number,
   distance?: number,
-  duration?: number
+  duration?: number,
 ) {
   try {
     const resp = await client.post(`/routes/${trackId}/update`, {
       lat,
       lng,
       distance,
-      duration
+      duration,
     });
     return resp.data as { trackId: string; track: RouteTrack };
   } catch (e) {
@@ -273,7 +471,7 @@ export async function endRouteTracking(
   lng: number,
   actualDistance?: number,
   actualDuration?: number,
-  notes?: string
+  notes?: string,
 ) {
   try {
     const resp = await client.post(`/routes/${trackId}/end`, {
@@ -281,7 +479,7 @@ export async function endRouteTracking(
       lng,
       actualDistance,
       actualDuration,
-      notes
+      notes,
     });
     return resp.data as { trackId: string; track: RouteTrack };
   } catch (e) {
@@ -308,7 +506,6 @@ export async function getUserRouteTracks(userId: string) {
     console.error("Failed to fetch user route tracks:", e);
     throw e;
   }
-
 }
 
 export default client;

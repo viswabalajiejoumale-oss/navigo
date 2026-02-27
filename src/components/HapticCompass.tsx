@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface HapticCompassProps {
@@ -10,7 +10,12 @@ function toRad(value: number) {
   return (value * Math.PI) / 180;
 }
 
-function bearingBetween(lat1: number, lng1: number, lat2: number, lng2: number) {
+function bearingBetween(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+) {
   const dLng = toRad(lng2 - lng1);
   const y = Math.sin(dLng) * Math.cos(toRad(lat2));
   const x =
@@ -20,8 +25,48 @@ function bearingBetween(lat1: number, lng1: number, lat2: number, lng2: number) 
   return (brng * 180) / Math.PI + 360;
 }
 
-export default function HapticCompass({ destination, active = true }: HapticCompassProps) {
+export default function HapticCompass({
+  destination,
+  active = true,
+}: HapticCompassProps) {
   const [status, setStatus] = useState("Waiting for compass...");
+  const [lastDirection, setLastDirection] = useState("center");
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const lastPulseAtRef = useRef(0);
+
+  const playSpatialPing = (pan: number) => {
+    const AudioContextClass =
+      globalThis.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    const context = audioContextRef.current;
+    const now = context.currentTime;
+
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(900, now);
+    gainNode.gain.setValueAtTime(0.0001, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.08, now + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+    if (typeof context.createStereoPanner === "function") {
+      const panner = context.createStereoPanner();
+      panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), now);
+      oscillator.connect(gainNode).connect(panner).connect(context.destination);
+    } else {
+      oscillator.connect(gainNode).connect(context.destination);
+    }
+
+    oscillator.start(now);
+    oscillator.stop(now + 0.13);
+  };
 
   useEffect(() => {
     if (!active || !destination) return;
@@ -38,28 +83,36 @@ export default function HapticCompass({ destination, active = true }: HapticComp
             pos.coords.latitude,
             pos.coords.longitude,
             destination.lat,
-            destination.lng
+            destination.lng,
           );
-          const diff = Math.abs(((lastHeading - bearing + 540) % 360) - 180);
+          const normalizedDiff = ((bearing - lastHeading + 540) % 360) - 180;
+          const absDiff = Math.abs(normalizedDiff);
 
-          if (diff < 10) {
-            if ("vibrate" in navigator) {
-              navigator.vibrate(200);
-            }
+          const now = Date.now();
+          if (now - lastPulseAtRef.current < 1500) return;
+          lastPulseAtRef.current = now;
+
+          if (absDiff < 12) {
+            if ("vibrate" in navigator) navigator.vibrate([220]);
+            playSpatialPing(0);
+            setLastDirection("center");
             setStatus("Target locked");
-          } else if (diff < 45) {
-            if ("vibrate" in navigator) {
-              navigator.vibrate([50, 50]);
-            }
-            setStatus("Adjust direction");
+          } else if (normalizedDiff < 0) {
+            if ("vibrate" in navigator) navigator.vibrate([80, 50, 80]);
+            playSpatialPing(-0.9);
+            setLastDirection("left");
+            setStatus("Turn left");
           } else {
-            setStatus("Reorient to target");
+            if ("vibrate" in navigator) navigator.vibrate([80, 40, 80, 40, 80]);
+            playSpatialPing(0.9);
+            setLastDirection("right");
+            setStatus("Turn right");
           }
         },
         () => {
           setStatus("Location unavailable");
         },
-        { enableHighAccuracy: true, maximumAge: 2000, timeout: 4000 }
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 4000 },
       );
     };
 
@@ -73,10 +126,13 @@ export default function HapticCompass({ destination, active = true }: HapticComp
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Haptic Compass</CardTitle>
+        <CardTitle>Sonic-Nav + Haptic-Pulse</CardTitle>
       </CardHeader>
       <CardContent>
         <p className="text-body-sm text-muted-foreground">{status}</p>
+        <p className="text-body-xs text-muted-foreground mt-1">
+          Direction: {lastDirection}
+        </p>
       </CardContent>
     </Card>
   );

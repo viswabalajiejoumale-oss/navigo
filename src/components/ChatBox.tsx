@@ -15,6 +15,22 @@ interface Message {
   timestamp: Date;
 }
 
+type NavigoActionKey =
+  | "Maps_TO"
+  | "OPEN_TICKET_LENS"
+  | "ACTIVATE_GUARDIAN"
+  | "ENABLE_COMPASS"
+  | "REPORT_BARRIER"
+  | "READ_SCREEN"
+  | "EMERGENCY_SOS"
+  | "GENERAL_CHAT";
+
+interface NavigoIntent {
+  speech: string;
+  action_key: NavigoActionKey;
+  payload: Record<string, string>;
+}
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 
@@ -199,6 +215,58 @@ export default function ChatBox() {
     return { cleanedText, actions };
   };
 
+  const parseIntent = (raw: unknown): NavigoIntent | null => {
+    if (!raw) return null;
+
+    const toValidate =
+      typeof raw === "string"
+        ? (() => {
+            try {
+              return JSON.parse(raw);
+            } catch {
+              return null;
+            }
+          })()
+        : raw;
+
+    if (!toValidate || typeof toValidate !== "object") return null;
+
+    const candidate = toValidate as {
+      speech?: unknown;
+      action_key?: unknown;
+      payload?: unknown;
+    };
+
+    const speech = typeof candidate.speech === "string" ? candidate.speech : "";
+    const actionKey =
+      typeof candidate.action_key === "string" ? candidate.action_key : "";
+    const payload =
+      candidate.payload && typeof candidate.payload === "object"
+        ? (candidate.payload as Record<string, string>)
+        : {};
+
+    const validActionKeys: NavigoActionKey[] = [
+      "Maps_TO",
+      "OPEN_TICKET_LENS",
+      "ACTIVATE_GUARDIAN",
+      "ENABLE_COMPASS",
+      "REPORT_BARRIER",
+      "READ_SCREEN",
+      "EMERGENCY_SOS",
+      "GENERAL_CHAT",
+    ];
+
+    if (!speech || !validActionKeys.includes(actionKey as NavigoActionKey)) {
+      return null;
+    }
+
+    return {
+      speech,
+      action_key: actionKey as NavigoActionKey,
+      payload,
+    };
+  };
+
   const translateIfNeeded = async (text: string) => {
     const target = state.language || "en";
     if (target === "en") return text;
@@ -260,6 +328,58 @@ export default function ChatBox() {
     });
   };
 
+  const mapModeId = (modeRaw?: string) => {
+    const mode = (modeRaw || "").toLowerCase();
+    if (mode === "train" || mode === "railway") return "railway";
+    if (mode === "airport" || mode === "flight") return "airport";
+    if (mode === "taxi") return "taxi";
+    return "bus";
+  };
+
+  const handleIntentAction = (intent: NavigoIntent) => {
+    const modeId = mapModeId(intent.payload?.mode || state.currentTransportMode);
+
+    switch (intent.action_key) {
+      case "Maps_TO": {
+        const destination = intent.payload?.destination || "nearest stop";
+        localStorage.setItem("navigo_voice_destination", destination);
+        dispatch({ type: "SET_TRANSPORT_MODE", payload: modeId });
+        navigate(`/explore/${modeId}`);
+        break;
+      }
+      case "OPEN_TICKET_LENS": {
+        localStorage.setItem("navigo_open_ticket_lens", "true");
+        navigate(`/explore/${modeId}`);
+        break;
+      }
+      case "ACTIVATE_GUARDIAN": {
+        localStorage.setItem("navigo_guardian_requested", "true");
+        navigate(`/explore/${modeId}`);
+        break;
+      }
+      case "ENABLE_COMPASS": {
+        localStorage.setItem("navigo_enable_compass", "true");
+        navigate(`/explore/${modeId}`);
+        break;
+      }
+      case "REPORT_BARRIER": {
+        localStorage.setItem("navigo_barrier_report_prompt", "true");
+        navigate(`/explore/${modeId}`);
+        break;
+      }
+      case "READ_SCREEN": {
+        break;
+      }
+      case "EMERGENCY_SOS": {
+        navigate("/ambulance/user");
+        break;
+      }
+      case "GENERAL_CHAT":
+      default:
+        break;
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -294,12 +414,17 @@ export default function ChatBox() {
       const serverResp = response.data?.response || "";
       const configured = response.data?.configured !== false;
 
-      const assistantText = configured && serverResp
-        ? serverResp
-        : localAssistantResponse(input, state.language);
+      const serverIntent =
+        parseIntent(response.data?.intent) || parseIntent(response.data?.response);
+
+      const assistantText =
+        serverIntent?.speech ||
+        (configured && serverResp ? serverResp : localAssistantResponse(input, state.language));
 
       const { cleanedText, actions } = parseActions(assistantText);
-      const translatedText = await translateIfNeeded(cleanedText || assistantText);
+      const translatedText = serverIntent
+        ? assistantText
+        : await translateIfNeeded(cleanedText || assistantText);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -310,7 +435,11 @@ export default function ChatBox() {
 
       setMessages((prev) => [...prev, assistantMessage]);
       void speakText(assistantMessage.content);
-      handleActions(actions);
+      if (serverIntent) {
+        handleIntentAction(serverIntent);
+      } else {
+        handleActions(actions);
+      }
     } catch (error) {
       console.error("Chat error:", error);
       const fallback = localAssistantResponse(input, state.language);
